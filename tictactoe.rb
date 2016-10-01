@@ -2,6 +2,7 @@
 require 'serialport'
 require 'socket'
 require 'timeout'
+(puts "CAN HAZ R00T????? KTHXBYE!!!";exit(0)) if ENV['USER']!='root'
 def timeprompt;return "["+Time.now.to_s.split(" ").slice(0,2).join(" ")+"]";end
 #ip_addr = `ip address`.match(/wlp2s0.+\n.+\n[ \n\t\r\f]+inet \d*\.\d*\.\d*\.\d*/).to_s.split(/[ \n\t\r\f]+/).pop.split(".")
 ip_addrsss = Socket.ip_address_list
@@ -11,23 +12,27 @@ print("Which IP?> ")
 ip_address = ip_addrsss[gets.chomp.to_i].split(".")
 ip_address.map!{|segment|x=segment;(3-x.length).times{x=" "+x};x}
 p ip_address
-print("Device?> ")
+print("Device(enter 'none' for game without serial port)?> ")
 devname = gets.chomp
-print("Baud?> ")
-devbaud = gets.chomp.to_i
-$ser = SerialPort.new(devname, devbaud) rescue (puts("ERROR");exit(0))
-at_exit{$ser.close}
-puts "#{timeprompt} Initializing...."
-sleep 1
-$ser.write("!22")
-sleep 0.01
-$ser.write("22")
-sleep 2
-for segment in ip_address
-	$ser.write(segment)
-	sleep 0.5
+$ser_enable = true
+devname=="none"&&$ser_enable=false
+$ser_enable&&print("Baud?> ")
+$ser_enable&&devbaud=gets.chomp.to_i
+$ser_enable&&$ser=(SerialPort.new(devname, devbaud) rescue (puts("ERROR");exit(0)))
+$ser_enable&&at_exit{$ser.close}
+if $ser_enable
+	puts "#{timeprompt} Initializing serial........"
+	sleep 1
+	$ser.write("!22")
+	sleep 0.01
+	$ser.write("22")
+	sleep 2
+	for segment in ip_address
+		$ser.write(segment)
+		sleep 0.5
+	end
+	sleep 3
 end
-sleep 3
 server = TCPServer.new(23)
 puts "#{timeprompt} Server is now accessible"
 c1 = true
@@ -84,8 +89,8 @@ def prompt(c,m,oc)
 	c.puts("3 | #{$field[2].join(" | ")} |")
 	c.puts("y +--"           +"-+---+---+")
 	c.puts
-	c.puts("Enter the coordinates of the field youto place your mark in.")
-	c.puts("Example: '21' entered by Player 1 would")
+	c.puts("Enter the coordinates of the field you want to place your mark in.")
+	c.puts("Example: '32' entered by Player 1 would")
 	c.puts("place X in the right field of the middle row.")
 	c.puts
 	
@@ -112,7 +117,7 @@ def prompt(c,m,oc)
 		end
 		if !(c.closed?&&oc.closed?)
 			puts;puts("   1 "           +"   2   3 x");puts("  +--"           +"-+---+---+");puts("1 | #{$field[0].join(" | ")} |");puts("  +--"           +"-+---+---+");puts("2 | #{$field[1].join(" | ")} |");puts("  +--"           +"-+---+---+");puts("3 | #{$field[2].join(" | ")} |");puts("y +--"           +"-+---+---+");puts
-			$ser.write($COMMANDS[m+resp].to_s)
+			$ser_enable&&$ser.write($COMMANDS[m+resp].to_s)
 		end
 end
 
@@ -130,19 +135,22 @@ loop do
 	c1 = server.accept
 	c1_sock_domain, c1_remote_port, c1_remote_hostname, c1_remote_ip = c1.peeraddr
 	c1.puts("Welcome to Tic Tac Toe! You are the 1st player( X ). Please wait for a 2nd player to log in.")
+	c1.print("\033]0;TicTacToe battle against ???(???)\007")
 	c1in = true
 	puts("#{timeprompt} P1 logged in => #{c1_remote_ip}(#{c1_remote_hostname})")
 	c2 = server.accept
 	c2_sock_domain, c2_remote_port, c2_remote_hostname, c2_remote_ip = c2.peeraddr
 	c1.puts("The 2nd player logged in. Game starts. Your opponent is '#{c1_remote_hostname}'.")
 	puts("#{timeprompt} P2 logged in => #{c2_remote_ip}(#{c2_remote_hostname})")
-	$ser.write("1")
+	$ser_enable&&$ser.write("1")
 	c1.puts("Player 2 begins.")
 	c2.puts("Wecome to Tic Tac Toe! You're the 2nd player( O ). Your opponent is '#{c1_remote_hostname}'. You may begin.")
 	$c2in = true
+	c1.print("\033]0;TicTacToe battle against #{c2_remote_hostname}(#{c2_remote_ip})\007")
+	c2.print("\033]0;TicTacToe battle against #{c1_remote_hostname}(#{c1_remote_ip})\007")
 	xabort = Thread.new{loop{Thread.start(server.accept){|c3|c3.puts("Sorry, server is full. Try again later.");c3.close;puts("#{timeprompt} Another P tried to log in")}}}
 	$playing = true
-	xshell = Thread.new{loop{gets.chomp=="next"&&(c1.close;c2.close)}}
+	xshell = Thread.new{loop{gets.chomp=="next"&&(c1.puts("admin abandoned you.");c2.puts("admin abandoned you.");c1.close;c2.close)}}
 	9.times{|i|
 		if i%2==0
 			#PLAYER2's TURN
@@ -167,23 +175,23 @@ loop do
 	if !(c1.closed?&&c2.closed?)
 		case checkForBingo
 		when "x"
-			$ser.write($COMMANDS["xWIN"].to_s)
+			$ser_enable&&$ser.write($COMMANDS["xWIN"].to_s)
 			c1.puts("YOU WON!")
 			c2.puts("X won!")
 			puts("#{timeprompt} X won");
 		when "o"
-			$ser.write($COMMANDS["oWIN"].to_s)
+			$ser_enable&&$ser.write($COMMANDS["oWIN"].to_s)
 			c2.puts("YOU WON!")
 			c1.puts("O won!")
 			puts("#{timeprompt} O won");
 		when nil
-			$ser.write($COMMANDS["DRAW"].to_s)
+			$ser_enable&&$ser.write($COMMANDS["DRAW"].to_s)
 			c2.puts("It's a draw!")
 			c1.puts("It's a draw!")
 			puts("#{timeprompt} DRAW")
 		end
 	else
-		$ser.write($COMMANDS["STOP"].to_s)
+		$ser_enable&&$ser.write($COMMANDS["STOP"].to_s)
 	end
 	$field = [
 		[" "," "," "],
